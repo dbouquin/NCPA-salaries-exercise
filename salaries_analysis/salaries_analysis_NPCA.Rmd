@@ -1,0 +1,114 @@
+---
+title: "Salaries Analysis Exercise (NPCA)"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(scales)
+
+```
+
+
+## Data import and subset to allow us to plot respondents by state
+```{r}
+salaries <- read.csv("clean_salaries.csv")
+
+# remove "X" index column
+salaries <- (subset(salaries, select = -c(X)))
+
+# remove "race" column
+without_race <- (subset(salaries, select = -c(race)))
+
+# remove where state is NaN
+without_race_state_known <- without_race[!(without_race$state=="NaN"),]
+
+# remove duplicates
+without_race_state_known <- without_race_state_known %>% distinct()
+
+```
+
+Plot the results
+```{r}
+respondents_state <- ggplot(without_race_state_known, aes(factor(state))) + geom_bar(fill="#009E73")
+respondents_state <- respondents_state + coord_flip()
+respondents_state <- respondents_state + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+respondents_state <- respondents_state + labs(title = "Number of Respondents by State", x= "State", y= "Count")
+respondents_state <- respondents_state + theme(plot.title = element_text(size=16))
+respondents_state
+
+```
+
+
+```{r}
+nonprofit_data <- filter(salaries, industry == "Nonprofits")
+nonprofit_data  <- filter(nonprofit_data, currency == "USD")
+nonprofit_data  <- nonprofit_data[!(nonprofit_data$gender=="NaN"),]
+nonprofit_data$gender <- as.factor(nonprofit_data$gender)
+nonprofit_data$industry <- as.factor(nonprofit_data$industry)
+nonprofit_data$age_range <- as.factor(nonprofit_data$age_range)
+nonprofit_data$all_experience <- as.factor(nonprofit_data$all_experience)
+nonprofit_data$race <- as.factor(nonprofit_data$race)
+nonprofit_data$field_experience <- as.factor(nonprofit_data$field_experience)
+```
+
+```{r}
+p <- ggplot(nonprofit_data, aes(x=gender, y=annual_salary)) + 
+  geom_violin()
+p <- p + scale_y_continuous(labels = label_comma())
+
+p
+# shows outliers 
+```
+
+```{r}
+# remove outlier
+
+nonprofit_data <- nonprofit_data[!(nonprofit_data$id=="695"),]
+nonprofit_data <- nonprofit_data[!(nonprofit_data$id=="2093"),]
+
+```
+
+```{r}
+p <- ggplot(nonprofit_data, aes(x=gender, y=annual_salary)) + 
+  geom_violin(trim=FALSE, fill='#A4A4A4', color="darkblue")+
+  geom_boxplot(width=0.1) + theme_minimal()
+p <- p + scale_y_continuous(labels = label_comma())
+# p <- p + stat_summary(fun.y=mean, geom="point", shape=23, size=2) # mean shown
+# p <- p + stat_summary(fun.y=median, geom="point", size=2, color="red") # median shown
+
+# p <- p + geom_boxplot(width=0.1)
+
+p <- p + stat_summary(fun.data="mean_sdl", mult=1, geom="crossbar", width=0.2 )
+p <- p + stat_summary(fun.data=mean_sdl, mult=1, 
+                 geom="pointrange", color="red")
+p
+```
+
+```
+
+
+
+
+## Analysis Questions
+
+```{r}
+# repeating IDs (more than one race or more than one state)
+id_repeats <- salaries %>% group_by(id) %>% filter(n() > 1)
+
+# remove "race" column 
+id_repeats <- (subset(id_repeats, select = -c(race)))
+
+
+# 
+id_repeats %>%
+ group_by(id) %>% #Grouping by id 
+ tally() %>% #Calculating the count
+ group_by(id) %>%
+ summarise(res = max(n)) 
+
+
+```
+
+
