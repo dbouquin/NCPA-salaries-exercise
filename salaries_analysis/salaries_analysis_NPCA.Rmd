@@ -3,35 +3,134 @@ title: "Salaries Analysis Exercise (NPCA)"
 output: html_notebook
 ---
 
-```{r}
+```{r, warning=FALSE}
 library(ggplot2)
 library(tidyverse)
 library(scales)
-
+library(caret)
+library(randomForest)
+library(varImp)
 ```
 
+## Five Questions
 
-## Data import and subset to allow us to plot respondents by state
+1. Which variables are most predictive in determining whether or not a person is in the top 10% of earners for their industry? Overall?
+
+2. Are there statistically significant pay disparities between genders in each industry? overall?
+(control for education and years of experience in a given domain)
+
+3. Are there statistically significant pay disparities between white and non-white people in each industry? overall? (control for education and years of experience in a given domain)
+
+4. Which industries pay the highest at entry level?
+
+5. Which states have the highest salaries?
+
+## Data import
+Subset to only keep data from the United States where the currency is USD. Convert the relevant columns to factors for plotting.
 ```{r}
 salaries <- read.csv("clean_salaries.csv")
 
 # remove "X" index column
 salaries <- (subset(salaries, select = -c(X)))
 
-# remove "race" column
-without_race <- (subset(salaries, select = -c(race)))
+# remove where country is not United States
+salaries <- salaries[salaries$country == 'United States',]
 
-# remove where state is NaN
-without_race_state_known <- without_race[!(without_race$state=="NaN"),]
+# remove where currency is not USD
+salaries <- salaries[salaries$currency == 'USD',]
 
-# remove duplicates
-without_race_state_known <- without_race_state_known %>% distinct()
+# convert variables to factors
+salaries$gender <- as.factor(salaries$gender)
+salaries$race <- as.factor(salaries$race)
+salaries$multiracial <- as.factor(salaries$multiracial)
+salaries$state <- as.factor(salaries$state)
+salaries$multistate <- as.factor(salaries$multistate)
+salaries$industry <- as.factor(salaries$industry)
+salaries$age_range <- as.factor(salaries$age_range)
+salaries$all_experience <- as.factor(salaries$all_experience)
+salaries$field_experience <- as.factor(salaries$field_experience)
+salaries$job <- as.factor(salaries$job)
+salaries$education.level <- as.factor(salaries$education.level) # column naming?
+
+# Look at white vs. non-white - create categories 
+# if white and not multiracial = white, otherwise = nonwhite
+white_salaries <- subset(salaries, (multiracial== "No"))
+white_salaries <- subset(white_salaries, !(race != "White"))
+
+# create new column
+salaries <- transform(
+  salaries, whiteness = ifelse(id %in% white_salaries$id, "white", "nonwhite"))
+salaries$whiteness <- as.factor(salaries$whiteness)
+```
+
+### 1. Which variables are most predictive in determining whether or not a person is in the top 10% of earners for their industry? Overall?
+```{r}
+
+# Select industries where there are at least 100 respondents
+industry_count <- table(salaries$industry)
+salaries2 <- subset(salaries, industry %in% names(industry_count[industry_count > 100]))
+
+# How many industries do we have now? (originally 70)
+length(unique(salaries2$industry)) # down to 7
+unique(salaries2$industry)
+
+# top 10% overall 
+n <- 10
+top10 <- salaries2[salaries2$annual_salary > quantile(salaries2$annual_salary, prob=1-n/100),]
+
+# create column to note whether or not this person is in the top 10% of earners across industries
+salaries2 <- transform(
+  salaries, top10_all = ifelse(id %in% top10$id, "Yes", "No"))
+
+salaries2$top10_all <- as.factor(salaries2$top10_all)
 
 ```
 
+## Random Forest
+```{r}
+
+data<-iris
+str(data)
+
+data$Species <- as.factor(data$Species)
+table(data$Species)
+
+set.seed(222)
+ind <- sample(2, nrow(data), replace = TRUE, prob = c(0.7, 0.3))
+train <- data[ind==1,]
+test <- data[ind==2,]
+
+rf <- randomForest(Species~., data=train, proximity=TRUE) 
+print(rf)
+
+p1 <- predict(rf, train)
+confusionMatrix(p1, train$ Species)
+
+p2 <- predict(rf, test)
+confusionMatrix(p2, test$ Species)
+```
+
+```{r}
+# Drop irrelevant columns
+salaries2 <- subset(salaries2, select = c(industry, age_range, state, all_experience, field_experience, education.level, gender, whiteness, top10_all))
+
+str(salaries2)
+
+set.seed(1849)
+# partician data
+ind <- sample(2, nrow(salaries2), replace = TRUE, prob = NULL)
+train <- salaries2[ind==1,]
+test <- salaries2[ind==2,]
+rf <- randomForest(top10_all~., data=train, proximity=TRUE) 
+
+
+```
+
+
+
 Plot the results
 ```{r}
-respondents_state <- ggplot(without_race_state_known, aes(factor(state))) + geom_bar(fill="#009E73")
+respondents_state <- ggplot(salaries, aes(factor(state))) + geom_bar(fill="#009E73")
 respondents_state <- respondents_state + coord_flip()
 respondents_state <- respondents_state + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
 respondents_state <- respondents_state + labs(title = "Number of Respondents by State", x= "State", y= "Count")
@@ -46,6 +145,8 @@ nonprofit_data <- filter(salaries, industry == "Nonprofits")
 nonprofit_data  <- filter(nonprofit_data, currency == "USD")
 nonprofit_data  <- nonprofit_data[!(nonprofit_data$gender=="NaN"),]
 nonprofit_data$gender <- as.factor(nonprofit_data$gender)
+nonprofit_data$multiracial <- as.factor(nonprofit_data$multiracial)
+nonprofit_data$multistate <- as.factor(nonprofit_data$multistate)
 nonprofit_data$industry <- as.factor(nonprofit_data$industry)
 nonprofit_data$age_range <- as.factor(nonprofit_data$age_range)
 nonprofit_data$all_experience <- as.factor(nonprofit_data$all_experience)
@@ -57,58 +158,57 @@ nonprofit_data$field_experience <- as.factor(nonprofit_data$field_experience)
 p <- ggplot(nonprofit_data, aes(x=gender, y=annual_salary)) + 
   geom_violin()
 p <- p + scale_y_continuous(labels = label_comma())
-
 p
 # shows outliers 
 ```
 
 ```{r}
-# remove outlier
-
+# remove outliers
 nonprofit_data <- nonprofit_data[!(nonprofit_data$id=="695"),]
 nonprofit_data <- nonprofit_data[!(nonprofit_data$id=="2093"),]
 
 ```
 
-```{r}
-p <- ggplot(nonprofit_data, aes(x=gender, y=annual_salary)) + 
-  geom_violin(trim=FALSE, fill='#A4A4A4', color="darkblue")+
+```{r} 
+# Make one of these plots for each industry then make them into a grid (show legend)
+p <- ggplot(nonprofit_data, aes(x=gender, y=annual_salary, fill=gender)) + 
+  geom_violin(trim=FALSE, fill='#F1F1F1')+
   geom_boxplot(width=0.1) + theme_minimal()
 p <- p + scale_y_continuous(labels = label_comma())
+p <- p + theme(legend.position="none") # Remove legend
+p <- p + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+p <- p + labs(title = "US Nonprofit Salaries by Gender", x= "Gender", y= "Salary")
+p <- p + theme(plot.title = element_text(size=16))
+
 # p <- p + stat_summary(fun.y=mean, geom="point", shape=23, size=2) # mean shown
 # p <- p + stat_summary(fun.y=median, geom="point", size=2, color="red") # median shown
 
 # p <- p + geom_boxplot(width=0.1)
 
-p <- p + stat_summary(fun.data="mean_sdl", mult=1, geom="crossbar", width=0.2 )
-p <- p + stat_summary(fun.data=mean_sdl, mult=1, 
-                 geom="pointrange", color="red")
+# p <- p + stat_summary(fun.data="mean_sdl", mult=1, geom="crossbar", width=0.2 )
+# p <- p + stat_summary(fun.data=mean_sdl, mult=1, 
+#                 geom="pointrange", color="red")
 p
 ```
 
 ```
 
 
-
-
-## Analysis Questions
+```{r}
 
 ```{r}
-# repeating IDs (more than one race or more than one state)
-id_repeats <- salaries %>% group_by(id) %>% filter(n() > 1)
-
-# remove "race" column 
-id_repeats <- (subset(id_repeats, select = -c(race)))
-
-
-# 
-id_repeats %>%
- group_by(id) %>% #Grouping by id 
- tally() %>% #Calculating the count
- group_by(id) %>%
- summarise(res = max(n)) 
-
-
+p2 <- ggplot(nonprofit_data, aes(x=state, y=annual_salary, fill=state)) + 
+  geom_boxplot() + theme_minimal() + coord_flip()
+p2 <- p2 + scale_y_continuous(labels = label_comma())
+p2 <- p2 + theme(legend.position="none") # Remove legend
+p2 <- p2 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+p2 <- p2 + labs(title = "US Nonprofit Salaries by State", x= "State", y= "Salary")
+p2 <- p2 + theme(plot.title = element_text(size=16))
+p2
 ```
 
+
+Create boxplot for all salaries across states (not industry specific)
+
+For each industry, which variable is most predictive of being in the highest 10% of earners?
 
