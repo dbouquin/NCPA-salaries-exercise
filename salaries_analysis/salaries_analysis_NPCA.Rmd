@@ -1,33 +1,38 @@
 ---
 title: "Salaries Analysis Exercise (NPCA)"
-output: html_notebook
+author: "Daina Bouquin"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
 ---
 
 ```{r, warning=FALSE}
 library(ggplot2)
 library(tidyverse)
 library(scales)
-library(caret)
-library(randomForest)
-library(varImp)
+library(psych)
+library(ggpubr)
+library(car)
+library(knitr)
 ```
 
 ## Five Questions
 
-1. Which variables are most predictive in determining whether or not a person is in the top 10% of earners for their industry? Overall?
+1. Which industries are the top 10% of earners associated with?
 
-2. Are there statistically significant pay disparities between genders in each industry? overall?
-(control for education and years of experience in a given domain)
+2. What are the characteristics of the top 10% of earners in each industry?
 
-3. Are there statistically significant pay disparities between white and non-white people in each industry? overall? (control for education and years of experience in a given domain)
+3. Are there statistically significant annual salary differences between genders in each industry? Overall?
 
-4. Which industries pay the highest at entry level?
+5. Which industries pay the highest at entry level?
 
-5. Which states have the highest salaries?
+6. Which states have the highest salaries? What about just among nonprofits?
 
-## Data import
+## Data import and more cleanup
 Subset to only keep data from the United States where the currency is USD. Convert the relevant columns to factors for plotting.
-```{r}
+```{r, warning=FALSE}
 salaries <- read.csv("clean_salaries.csv")
 
 # remove "X" index column
@@ -39,7 +44,10 @@ salaries <- salaries[salaries$country == 'United States',]
 # remove where currency is not USD
 salaries <- salaries[salaries$currency == 'USD',]
 
-# convert variables to factors
+# drop other currency column
+salaries <- (subset(salaries, select = -c(other_currency)))
+
+# convert categorical variables to factors
 salaries$gender <- as.factor(salaries$gender)
 salaries$race <- as.factor(salaries$race)
 salaries$multiracial <- as.factor(salaries$multiracial)
@@ -57,158 +65,325 @@ salaries$education.level <- as.factor(salaries$education.level) # column naming?
 white_salaries <- subset(salaries, (multiracial== "No"))
 white_salaries <- subset(white_salaries, !(race != "White"))
 
-# create new column
+# create new column for white vs. nonwhite
 salaries <- transform(
   salaries, whiteness = ifelse(id %in% white_salaries$id, "white", "nonwhite"))
 salaries$whiteness <- as.factor(salaries$whiteness)
-```
 
-### 1. Which variables are most predictive in determining whether or not a person is in the top 10% of earners for their industry? Overall?
-```{r}
+# drop race column
+salaries <- (subset(salaries, select = -c(race)))
 
-# Select industries where there are at least 100 respondents
+# drop records associated with more than one state 
+salaries <- salaries[!(salaries$multistate=="Yes"),]
+
+# drop column for multistate
+salaries <- (subset(salaries, select = -c(multistate)))
+
+# drop context columns
+salaries <- (subset(salaries, select = -c(income_context)))
+salaries <- (subset(salaries, select = -c(job_context)))
+
+# Select industries where there are at least 100 people (meaningful sample of respondents)
+# ** Here we create salaries2 **
 industry_count <- table(salaries$industry)
 salaries2 <- subset(salaries, industry %in% names(industry_count[industry_count > 100]))
 
 # How many industries do we have now? (originally 70)
-length(unique(salaries2$industry)) # down to 7
-unique(salaries2$industry)
+# length(unique(salaries2$industry)) # down to 7
 
-# top 10% overall 
+# remove duplicates
+salaries <- salaries[!duplicated(salaries$id), ]
+
+# double check for duplicates
+n_occur <- data.frame(table(salaries$id))
+# n_occur[n_occur$Freq > 1,] # no duplicates left
+
+```
+
+## Outlier detection and removal
+outliers can actually be really useful so we'll identify them and store that information.
+```{r}
+# Start with visual inspection 
+
+# build pretty palette:
+ppretty <- c("#9e0142", "#d53e4f", "#fdae61", "#ffd86b", "#66c2a5", "#3288bd", "#5e4fa2")
+
+bp <- ggplot(salaries2, aes(x="", y=annual_salary, group=industry)) + 
+  geom_boxplot(aes(fill=industry)) + theme_minimal()
+bp <- bp + scale_y_continuous(labels = label_comma())
+bp <- bp + facet_grid(. ~ industry)
+bp <- bp + scale_fill_manual(values=ppretty)
+bp <- bp + theme(legend.position="none") # Remove legend
+bp <- bp + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+bp <- bp + labs(title = "US Salaries by Industry", x= "Respondents", y= "Salary")
+bp
+```
+In ggplot2, an observation is defined as an outlier if it meets one of the following two requirements:
+* The observation is 1.5 times the interquartile range less than the first quartile (Q1)
+* The observation is 1.5 times the interquartile range greater than the third quartile (Q3).
+```{r}
+# function to replicate outlier conditions
+find_outlier <- function(x) {
+  return(x < quantile(x, .25) - 1.5*IQR(x) | x > quantile(x, .75) + 1.5*IQR(x))
+}
+
+# create column to indicate outliers
+salaries2 <- salaries2 %>%
+        group_by(industry) %>%
+        mutate(outlier = ifelse(find_outlier(annual_salary), "Yes", "No"))
+
+# create subset to work with where the outliers are removed
+# ** Here we create salaries3 **
+salaries3 <- salaries2[salaries2$outlier == 'No',]
+
+# create a new boxplot using data without outliers
+bp2 <- ggplot(salaries3, aes(x="", y=annual_salary, group=industry)) + 
+  geom_boxplot(aes(fill=industry)) + theme_minimal()
+bp2 <- bp2 + scale_y_continuous(labels = label_comma())
+bp2 <- bp2 + facet_grid(. ~ industry)
+bp2 <- bp2 + scale_fill_manual(values=ppretty)
+bp2 <- bp2 + theme(legend.position="none") # Remove legend
+bp2 <- bp2 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+bp2 <- bp2 + labs(title = "US Salaries by Industry", x= "Industry", y= "Salary")
+bp2
+
+```
+## 1.  Which industries are the top 10% of earners associated with?
+```{r}
+# top 10% overall (independent of industry)
 n <- 10
-top10 <- salaries2[salaries2$annual_salary > quantile(salaries2$annual_salary, prob=1-n/100),]
-
-# create column to note whether or not this person is in the top 10% of earners across industries
-salaries2 <- transform(
-  salaries, top10_all = ifelse(id %in% top10$id, "Yes", "No"))
-
-salaries2$top10_all <- as.factor(salaries2$top10_all)
-
+top_10p <- salaries3[salaries3$annual_salary > quantile(salaries3$annual_salary, prob=1-n/100),]
 ```
-
-## Random Forest
 ```{r}
+kable(unique(top_10p$industry)) 
+# Manufacturing, Financial, Tech, Government, Health care
+# summary(top_10p)
+```
 
-data<-iris
-str(data)
+## 2. What are the characteristics of the top 10% of earners in each industry?
+```{r}
+# find the top 10% of earners within each industry
 
-data$Species <- as.factor(data$Species)
-table(data$Species)
+by_industry <- salaries3 %>% group_by(industry)
 
-set.seed(222)
-ind <- sample(2, nrow(data), replace = TRUE, prob = c(0.7, 0.3))
-train <- data[ind==1,]
-test <- data[ind==2,]
+top_10p_industry <- by_industry[by_industry$annual_salary > quantile(by_industry$annual_salary, prob=1-n/100),]
+```
 
-rf <- randomForest(Species~., data=train, proximity=TRUE) 
-print(rf)
+### Education
+```{r, warning=FALSE}
+# remove records without answers
+top_10p_industry_plot1  <- top_10p_industry[!(top_10p_industry$education.level=="NaN"),]
 
-p1 <- predict(rf, train)
-confusionMatrix(p1, train$ Species)
+# new pretty palette
+ppretty2 <- c("#9e0142", "#fdae61", "#66c2a5", "#3288bd", "#5e4fa2")
 
-p2 <- predict(rf, test)
-confusionMatrix(p2, test$ Species)
+h1 <- ggplot(top_10p_industry_plot1, aes(x=education.level, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
+h1 <- h1 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
+h1 <- h1 + scale_fill_manual(values=ppretty2)
+h1 <- h1 + theme(legend.position="none") # Remove legend
+h1 <- h1 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h1 <- h1 + labs(title = "Education of Top 10% of Earners", x= "Education", y= "Count")
+h1
+```
+### Age
+```{r, warning=FALSE}
+h2 <- ggplot(top_10p_industry, aes(x=age_range, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
+h2 <- h2 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
+h2 <- h2 + scale_fill_manual(values=ppretty2)
+h2 <- h2 + theme(legend.position="none") # Remove legend
+h2 <- h2 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h2 <- h2 + labs(title = "Age of Top 10% of Earners", x= "Age", y= "Count")
+h2
+```
+### Experience
+```{r, warning=FALSE}
+h3 <- ggplot(top_10p_industry, aes(x=field_experience, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
+h3 <- h3 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
+h3 <- h3 + scale_fill_manual(values=ppretty2)
+h3 <- h3 + theme(legend.position="none") # Remove legend
+h3 <- h3 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h3 <- h3 + labs(title = "Experience of Top 10% of Earners", x= "Experience in the Field", y= "Count")
+h3
+```
+### Gender
+```{r, warning=FALSE}
+# remove records without answers
+top_10p_industry_plot2  <- top_10p_industry[!(top_10p_industry$gender=="NaN" | top_10p_industry$gender=="Other or prefer not to answer"),]
+
+h4 <- ggplot(top_10p_industry_plot2, aes(x=gender, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
+h4 <- h4 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
+h4 <- h4 + scale_fill_manual(values=ppretty2)
+h4 <- h4 + theme(legend.position="none") # Remove legend
+h4 <- h4 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h4 <- h4 + labs(title = "Gender of Top 10% of Earners", x= "Gender", y= "Count")
+h4
+```
+### Whiteness
+```{r, warning=FALSE}
+h5 <- ggplot(top_10p_industry, aes(x=whiteness, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
+h5 <- h5 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
+h5 <- h5 + scale_fill_manual(values=ppretty2)
+h5 <- h5 + theme(legend.position="none") # Remove legend
+h5 <- h5 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h5 <- h5 + labs(title = "Whiteness Among Top 10% of Earners", x= "Race", y= "Count")
+h5
+```
+### States 
+```{r, warning=FALSE}
+# remove records without answers
+top_10p_industry_plot3  <- top_10p_industry[!(top_10p_industry$state=="NaN"),]
+
+s1 <- ggplot(top_10p_industry_plot3, aes(x=state, fill=industry, color=industry)) + geom_point(stat="count") + coord_flip()
+s1 <- s1 + scale_color_manual(values=ppretty2) + theme_minimal()
+s1 <- s1 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+s1 <- s1 + labs(title = "States of Top 10% of Earners", x= "State", y= "Count")
+s1
+```
+
+## 3. Are there statistically significant annual salary differences between genders in each industry? overall?
+
+```{r, warning=FALSE}
+# Go back to using salaries3 
+# remove records without answers
+
+salaries3_gender  <- salaries3[!(salaries3$gender=="NaN" | salaries3$gender=="Other or prefer not to answer" | salaries3$gender=="Non-binary"),] # drop non-binary for two sample t-test
+```
+
+Can we do a between groups t-test? 
+needs to be normally distributed and no significant difference in variance
+```{r, warning=FALSE}
+# check for normal distribution visually
+ggqqplot(salaries3_gender$annual_salary) # Not normally distributed
+
+```
+F-test to confirm that we can't do a t-test
+```{r}
+# use F-test to see if variances are equal between groups
+res.ftest <- var.test(annual_salary ~ gender, data = salaries3_gender)
+res.ftest # less than the significance level 0.05, therefore there is a significant difference between the two variances.
+```
+
+We can't use the t-test for this group of industries, but can we do it for the full dataset?
+```{r, warning=FALSE}
+# Go back to using salaries
+salaries_gender  <- salaries[!(salaries$gender=="NaN" | salaries$gender=="Other or prefer not to answer" | salaries$gender=="Non-binary"),] # drop non-binary for two sample t-test
+
+# Need to remove outliers
+# use previously defined outlier function
+# create column to indicate outliers
+salaries_outliers_removed <- salaries_gender %>%
+        mutate(outlier = ifelse(find_outlier(annual_salary), "Yes", "No"))
+
+# create subset to work with where the outliers are removed
+salaries_outliers_removed <- salaries_outliers_removed[salaries_outliers_removed$outlier == 'No',]
+
+# check for normal distribution visually
+ggqqplot(salaries_outliers_removed$annual_salary) 
+
 ```
 
 ```{r}
-# Drop irrelevant columns
-salaries2 <- subset(salaries2, select = c(industry, age_range, state, all_experience, field_experience, education.level, gender, whiteness, top10_all))
-
-str(salaries2)
-
-set.seed(1849)
-# partician data
-ind <- sample(2, nrow(salaries2), replace = TRUE, prob = NULL)
-train <- salaries2[ind==1,]
-test <- salaries2[ind==2,]
-rf <- randomForest(top10_all~., data=train, proximity=TRUE) 
-
+# F-test
+res.ftest2 <- var.test(annual_salary ~ gender, data = salaries_outliers_removed)
+res.ftest2 # variance differs still, so we can't do a statistical examination
 
 ```
 
-
-
-Plot the results
+We can still take a look to see if there are differences in pay by industry, but we can't say that gender is the cause of any observable difference. If we had been able to do a t-test we would have wanted to further control for years of experience and education.
 ```{r}
-respondents_state <- ggplot(salaries, aes(factor(state))) + geom_bar(fill="#009E73")
-respondents_state <- respondents_state + coord_flip()
-respondents_state <- respondents_state + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
-respondents_state <- respondents_state + labs(title = "Number of Respondents by State", x= "State", y= "Count")
-respondents_state <- respondents_state + theme(plot.title = element_text(size=16))
-respondents_state
-
+# comparing just men and women within industries with at least 100 respondents
+bp3 <- ggplot(salaries3_gender, aes(x=gender, y=annual_salary, fill=gender)) + 
+  # geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_boxplot(width=0.4) + theme_minimal()
+bp3 <- bp3 + scale_y_continuous(labels = label_comma()) 
+bp3 <- bp3 + facet_wrap(industry ~ ., ncol=4) 
+bp3 <- bp3 + scale_fill_manual(values=ppretty2)
+bp3 <- bp3 + theme(legend.position="none")
+bp3
 ```
 
+Averages for men are higher but not significantly so. 
 
+### What about salaries across the whole dataset?
 ```{r}
-nonprofit_data <- filter(salaries, industry == "Nonprofits")
-nonprofit_data  <- filter(nonprofit_data, currency == "USD")
-nonprofit_data  <- nonprofit_data[!(nonprofit_data$gender=="NaN"),]
-nonprofit_data$gender <- as.factor(nonprofit_data$gender)
-nonprofit_data$multiracial <- as.factor(nonprofit_data$multiracial)
-nonprofit_data$multistate <- as.factor(nonprofit_data$multistate)
-nonprofit_data$industry <- as.factor(nonprofit_data$industry)
-nonprofit_data$age_range <- as.factor(nonprofit_data$age_range)
-nonprofit_data$all_experience <- as.factor(nonprofit_data$all_experience)
-nonprofit_data$race <- as.factor(nonprofit_data$race)
-nonprofit_data$field_experience <- as.factor(nonprofit_data$field_experience)
-```
-
-```{r}
-p <- ggplot(nonprofit_data, aes(x=gender, y=annual_salary)) + 
-  geom_violin()
-p <- p + scale_y_continuous(labels = label_comma())
-p
-# shows outliers 
-```
-
-```{r}
-# remove outliers
-nonprofit_data <- nonprofit_data[!(nonprofit_data$id=="695"),]
-nonprofit_data <- nonprofit_data[!(nonprofit_data$id=="2093"),]
-
-```
-
-```{r} 
-# Make one of these plots for each industry then make them into a grid (show legend)
-p <- ggplot(nonprofit_data, aes(x=gender, y=annual_salary, fill=gender)) + 
-  geom_violin(trim=FALSE, fill='#F1F1F1')+
+bp4 <- ggplot(salaries_outliers_removed, aes(x=gender, y=annual_salary, fill=gender)) + 
   geom_boxplot(width=0.1) + theme_minimal()
-p <- p + scale_y_continuous(labels = label_comma())
-p <- p + theme(legend.position="none") # Remove legend
-p <- p + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
-p <- p + labs(title = "US Nonprofit Salaries by Gender", x= "Gender", y= "Salary")
-p <- p + theme(plot.title = element_text(size=16))
-
-# p <- p + stat_summary(fun.y=mean, geom="point", shape=23, size=2) # mean shown
-# p <- p + stat_summary(fun.y=median, geom="point", size=2, color="red") # median shown
-
-# p <- p + geom_boxplot(width=0.1)
-
-# p <- p + stat_summary(fun.data="mean_sdl", mult=1, geom="crossbar", width=0.2 )
-# p <- p + stat_summary(fun.data=mean_sdl, mult=1, 
-#                 geom="pointrange", color="red")
-p
+bp4 <- bp4 + scale_y_continuous(labels = label_comma()) 
+bp4 <- bp4 + scale_fill_manual(values=ppretty2)
+bp4 <- bp4 + labs(title = "US Salaries by Gender", x= "Gender", y= "Salary")
+bp4 <- bp4 + theme(legend.position="none")
+bp4
 ```
 
+## 4. Which industries pay the highest at entry level?
+```{r}
+# back to salaries2 (not subset by industries with at least 100 respondents)
+# remove outliers
+salaries2_outliers_removed <- salaries2 %>%
+        mutate(outlier = ifelse(find_outlier(annual_salary), "Yes", "No"))
+salaries2_outliers_removed <- salaries2_outliers_removed[salaries2_outliers_removed$outlier == 'No',]
+
+
+# subset to only entry-level salaries
+entry_salaries <- salaries2_outliers_removed[!(salaries2_outliers_removed$field_experience != "1 year or less"),]
+
+# top 10% of entry salaries
+n <- 10
+entry_top_10p <- entry_salaries[entry_salaries$annual_salary > quantile(entry_salaries$annual_salary, prob=1-n/100),]
 ```
 
-
 ```{r}
-
+kable(unique(entry_top_10p$industry))
+```
+Who are these high earning entry-level employees?
 ```{r}
-p2 <- ggplot(nonprofit_data, aes(x=state, y=annual_salary, fill=state)) + 
+entry_top_10p <- (subset(entry_top_10p, select = -c(timestamp, country, currency, multiracial, job, outlier, add_compensation)))
+
+kable(entry_top_10p)
+```
+
+## 5. Which states have the highest salaries?
+```{r, fig.height= 6.2}
+# fig.height= 6.2
+
+salaries2 <- salaries2[!(salaries2$state=="NaN"),]
+
+# remove outliers
+salaries2_outliers_removed <- salaries2 %>%
+        mutate(outlier = ifelse(find_outlier(annual_salary), "Yes", "No"))
+salaries2_outliers_removed <- salaries2_outliers_removed[salaries2_outliers_removed$outlier == 'No',]
+
+# plot the results
+bp5 <- ggplot(salaries2_outliers_removed, aes(x=state, y=annual_salary, fill=state)) + 
   geom_boxplot() + theme_minimal() + coord_flip()
-p2 <- p2 + scale_y_continuous(labels = label_comma())
-p2 <- p2 + theme(legend.position="none") # Remove legend
-p2 <- p2 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
-p2 <- p2 + labs(title = "US Nonprofit Salaries by State", x= "State", y= "Salary")
-p2 <- p2 + theme(plot.title = element_text(size=16))
-p2
+bp5 <- bp5 + scale_y_continuous(labels = label_comma())
+bp5 <- bp5 + theme(legend.position="none") # Remove legend
+bp5 <- bp5 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
+bp5 <- bp5 + labs(title = "US Salaries by State", x= "State", y= "Salary")
+bp5 <- bp5 + theme(plot.title = element_text(size=18))
+bp5
 ```
 
+### What about pay within the nonprofit industry?
+```{r, fig.height= 5}
+# fig.height= 5
 
-Create boxplot for all salaries across states (not industry specific)
+nonprofit_data <- filter(salaries2, industry == "Nonprofit")
 
-For each industry, which variable is most predictive of being in the highest 10% of earners?
+nonprofit_data_outliers_removed <- nonprofit_data %>%
+        mutate(outlier = ifelse(find_outlier(annual_salary), "Yes", "No"))
+
+# create subset to work with where the outliers are removed
+nonprofit_data_outliers_removed <- nonprofit_data_outliers_removed[nonprofit_data_outliers_removed$outlier == 'No',]
+
+# plot the results
+bp6 <- ggplot(nonprofit_data_outliers_removed, aes(x=state, y=annual_salary, fill=state)) + 
+  geom_boxplot() + theme_minimal() + coord_flip()
+bp6 <- bp6 + scale_y_continuous(labels = label_comma())
+bp6 <- bp6 + theme(legend.position="none") # Remove legend
+bp6 <- bp6 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
+bp6 <- bp6 + labs(title = "US Nonprofit Salaries by State", x= "State", y= "Salary")
+bp6 <- bp6 + theme(plot.title = element_text(size=18))
+bp6
+```
 
