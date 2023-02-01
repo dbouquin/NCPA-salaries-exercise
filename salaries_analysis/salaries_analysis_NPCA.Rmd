@@ -2,9 +2,9 @@
 title: "Salaries Analysis Exercise (NPCA)"
 author: "Daina Bouquin"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
-  pdf_document: default
   html_notebook: default
 ---
 
@@ -16,6 +16,7 @@ library(psych)
 library(ggpubr)
 library(car)
 library(knitr)
+library(rmarkdown)
 library(tinytex)
 ```
 
