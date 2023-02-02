@@ -1,14 +1,14 @@
 ---
 title: "Salaries Analysis Exercise (NPCA)"
 author: "Daina Bouquin"
-output:
-  pdf_document: default
-  html_document:
-    df_print: paged
-  html_notebook: default
+output: html_document
 ---
 
-```{r, warning=FALSE, echo=FALSE}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE, results='hide'}
 library(ggplot2)
 library(tidyverse)
 library(scales)
@@ -17,7 +17,6 @@ library(ggpubr)
 library(car)
 library(knitr)
 library(rmarkdown)
-library(tinytex)
 ```
 
 ### Five Questions
@@ -104,8 +103,8 @@ n_occur <- data.frame(table(salaries$id))
 ```
 
 ### Outlier detection and removal
-outliers can actually be really useful so we'll identify them and store that information.
-```{r}
+Outliers can actually be really useful so we'll identify them and store that information.
+```{r, warning=FALSE,echo=TRUE}
 # Start with visual inspection 
 
 # build pretty palette:
@@ -118,15 +117,17 @@ bp <- bp + scale_y_continuous(labels = label_comma())
 bp <- bp + facet_grid(. ~ industry)
 bp <- bp + scale_fill_manual(values=ppretty)
 bp <- bp + theme(legend.position="none") # Remove legend
-bp <- bp + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+bp <- bp + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 bp <- bp + labs(title = "US Salaries by Industry", x= "Respondents", y= "Salary")
 bp
+
 ```
+
 
 In ggplot2, an observation is defined as an outlier if it meets one of the following two requirements:
 * The observation is 1.5 times the interquartile range less than the first quartile (Q1)
 * The observation is 1.5 times the interquartile range greater than the third quartile (Q3).
-```{r}
+```{r, warning=FALSE, echo=TRUE}
 # create a function to replicate outlier conditions
 find_outlier <- function(x) {
   return(x < quantile(x, .25) - 1.5*IQR(x) | x > quantile(x, .75) + 1.5*IQR(x))
@@ -148,11 +149,12 @@ bp2 <- bp2 + scale_y_continuous(labels = label_comma())
 bp2 <- bp2 + facet_grid(. ~ industry)
 bp2 <- bp2 + scale_fill_manual(values=ppretty)
 bp2 <- bp2 + theme(legend.position="none") # Remove legend
-bp2 <- bp2 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+bp2 <- bp2 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 bp2 <- bp2 + labs(title = "US Salaries by Industry", x= "Industry", y= "Salary")
 bp2
 
 ```
+
 ### 1.  Which industries are the top 10% of earners associated with?
 ```{r}
 # top 10% overall (independent of industry)
@@ -171,7 +173,7 @@ top_10p_industry <- by_industry[by_industry$annual_salary > quantile(by_industry
 ```
 
 #### Education
-```{r, warning=FALSE}
+```{r, warning=FALSE, fig.height= 6.5}
 # remove records without answers
 top_10p_industry_plot1  <- top_10p_industry[!(top_10p_industry$education.level=="NaN"),]
 
@@ -182,35 +184,35 @@ h1 <- ggplot(top_10p_industry_plot1, aes(x=education.level, fill=industry)) + ge
 h1 <- h1 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
 h1 <- h1 + scale_fill_manual(values=ppretty2)
 h1 <- h1 + theme(legend.position="none") # Remove legend
-h1 <- h1 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h1 <- h1 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 h1 <- h1 + labs(title = "Education of Top 10% of Earners", x= "Education", y= "Count")
 h1
 ```
 
 #### Age
-```{r, warning=FALSE}
+```{r, warning=FALSE, fig.height= 5.5}
 h2 <- ggplot(top_10p_industry, aes(x=age_range, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
 h2 <- h2 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
 h2 <- h2 + scale_fill_manual(values=ppretty2)
 h2 <- h2 + theme(legend.position="none") # Remove legend
-h2 <- h2 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h2 <- h2 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 h2 <- h2 + labs(title = "Age of Top 10% of Earners", x= "Age", y= "Count")
 h2
 ```
 
 #### Experience
-```{r, warning=FALSE}
+```{r, warning=FALSE, fig.height= 5.5}
 h3 <- ggplot(top_10p_industry, aes(x=field_experience, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
 h3 <- h3 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
 h3 <- h3 + scale_fill_manual(values=ppretty2)
 h3 <- h3 + theme(legend.position="none") # Remove legend
-h3 <- h3 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h3 <- h3 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 h3 <- h3 + labs(title = "Experience of Top 10% of Earners", x= "Experience in the Field", y= "Count")
 h3
 ```
 
 #### Gender
-```{r, warning=FALSE}
+```{r, warning=FALSE, fig.height= 5.5}
 # remove records without answers
 top_10p_industry_plot2  <- top_10p_industry[!(top_10p_industry$gender=="NaN" | top_10p_industry$gender=="Other or prefer not to answer"),]
 
@@ -218,30 +220,30 @@ h4 <- ggplot(top_10p_industry_plot2, aes(x=gender, fill=industry)) + geom_histog
 h4 <- h4 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
 h4 <- h4 + scale_fill_manual(values=ppretty2)
 h4 <- h4 + theme(legend.position="none") # Remove legend
-h4 <- h4 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h4 <- h4 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 h4 <- h4 + labs(title = "Gender of Top 10% of Earners", x= "Gender", y= "Count")
 h4
 ```
 
 #### Whiteness
-```{r, warning=FALSE}
+```{r, warning=FALSE, fig.height= 5.5}
 h5 <- ggplot(top_10p_industry, aes(x=whiteness, fill=industry)) + geom_histogram(stat="count", color="lightgrey")
 h5 <- h5 + facet_grid(industry ~ .) + coord_flip() + theme_minimal()
 h5 <- h5 + scale_fill_manual(values=ppretty2)
 h5 <- h5 + theme(legend.position="none") # Remove legend
-h5 <- h5 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+h5 <- h5 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 h5 <- h5 + labs(title = "Whiteness Among Top 10% of Earners", x= "Race", y= "Count")
 h5
 ```
 
 #### States 
-```{r, warning=FALSE}
+```{r, warning=FALSE, fig.height= 5.5}
 # remove records without answers
 top_10p_industry_plot3  <- top_10p_industry[!(top_10p_industry$state=="NaN"),]
 
 s1 <- ggplot(top_10p_industry_plot3, aes(x=state, fill=industry, color=industry)) + geom_point(stat="count") + coord_flip()
 s1 <- s1 + scale_color_manual(values=ppretty2) + theme_minimal()
-s1 <- s1 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+s1 <- s1 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 s1 <- s1 + labs(title = "States of Top 10% of Earners", x= "State", y= "Count")
 s1
 ```
@@ -262,7 +264,7 @@ The data needs to be normally distributed with *no* significant difference in va
 qq1 <- ggqqplot(salaries3_gender, x = "annual_salary",
    color = "gender", palette = c("#9e0142", "#fdae61")) # not normally distributed
 qq1 <- qq1 + theme(legend.position="bottom")
-qq1 <- qq1 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+qq1 <- qq1 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 qq1 <- qq1 + labs(title = "Q-Q Plot for Industries with at least 100 responses")
 qq1
 ```
@@ -301,7 +303,7 @@ Check for normal distribution visually
 qq2 <- ggqqplot(salaries_outliers_removed, x = "annual_salary",
    color = "gender", palette = c("#9e0142", "#fdae61")) # not normally distributed
 qq2 <- qq2 + theme(legend.position="bottom") 
-qq2 <- qq2 + theme(text = element_text(size=10), axis.title=element_text(size=14)) 
+qq2 <- qq2 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 qq2 <- qq2 + labs(title = "Q-Q Plot for all industries")
 qq2
 
@@ -326,9 +328,11 @@ We can still take a look to see if there are differences in pay by industry, but
 # comparing just men and women within industries with at least 100 respondents
 bp3 <- ggplot(salaries3_gender, aes(x=gender, y=annual_salary, fill=gender)) + 
     geom_boxplot(width=0.4) + theme_minimal()
+bp3 <- bp3 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 bp3 <- bp3 + scale_y_continuous(labels = label_comma()) 
 bp3 <- bp3 + facet_wrap(industry ~ ., ncol=4) 
 bp3 <- bp3 + scale_fill_manual(values=ppretty2)
+bp3 <- bp3 + labs(title = "Pay Differences by Industry", x= "Gender", y= "Salary")
 bp3 <- bp3 + theme(legend.position="none")
 bp3
 ```
@@ -350,23 +354,23 @@ pay_gap <- pay_gap[!(pay_gap$pay_gap==0),]
 kable(pay_gap) 
 ```
 The largest pay gap between men and women is seen in the Tech industry.
-```{r}
+```{r, warning =FALSE}
 ### What about salaries across the whole dataset?
 stat <- salaries_outliers_removed %>% group_by(gender) %>% summarise(mean_annual_salary = mean(annual_salary)) 
 
 bp4 <- ggplot(salaries_outliers_removed, aes(x=gender, y=annual_salary, fill=gender)) + 
     geom_boxplot(width=0.15) + 
-    stat_summary(fun.y=mean, geom="point", color="black", fill="white") + 
+    stat_summary(fun.y=mean, geom="point", color="white", fill="white") + 
     geom_text(data = stat, 
             aes(label = round(mean_annual_salary, 2), x = gender, y = mean_annual_salary - 0.1),
             vjust = 0, nudge_x = 0.22) +
     theme_minimal()
+bp4 <- bp4 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
 bp4 <- bp4 + scale_y_continuous(labels = label_comma()) 
 bp4 <- bp4 + scale_fill_manual(values=ppretty2)
 bp4 <- bp4 + labs(title = "US Salaries by Gender", x= "Gender", y= "Salary")
 bp4 <- bp4 + theme(legend.position="none")
 bp4
-
 ```
 
 What's the difference in average pay between men and women across all industries?
@@ -402,8 +406,7 @@ kable(entry_top_10p)
 ```
 
 ### 5. Which states have the highest salaries?
-```{r}
-# fig.height= 6.2
+```{r, fig.height= 6.5}
 salaries2 <- salaries2[!(salaries2$state=="NaN"),]
 
 # remove outliers
@@ -416,7 +419,7 @@ bp5 <- ggplot(salaries2_outliers_removed, aes(x=state, y=annual_salary, fill=sta
   geom_boxplot() + theme_minimal() + coord_flip()
 bp5 <- bp5 + scale_y_continuous(labels = label_comma())
 bp5 <- bp5 + theme(legend.position="none") # Remove legend
-bp5 <- bp5 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
+bp5 <- bp5 + theme(text = element_text(size=12), axis.title=element_text(size=16)) 
 bp5 <- bp5 + labs(title = "US Salaries by State", x= "State", y= "Salary")
 bp5 <- bp5 + theme(plot.title = element_text(size=18))
 bp5
@@ -430,8 +433,7 @@ kable(high_paying_states_list)
 ```
 
 #### What about pay within just the nonprofit industry?
-```{r}
-# fig.height= 5
+```{r, fig.height= 5.5}
 nonprofit_data <- filter(salaries2, industry == "Nonprofit")
 
 nonprofit_data_outliers_removed <- nonprofit_data %>%
@@ -445,7 +447,7 @@ bp6 <- ggplot(nonprofit_data_outliers_removed, aes(x=state, y=annual_salary, fil
   geom_boxplot() + theme_minimal() + coord_flip()
 bp6 <- bp6 + scale_y_continuous(labels = label_comma())
 bp6 <- bp6 + theme(legend.position="none") # Remove legend
-bp6 <- bp6 + theme(text = element_text(size=16), axis.title=element_text(size=16)) 
+bp6 <- bp6 + theme(text = element_text(size=12), axis.title=element_text(size=16)) 
 bp6 <- bp6 + labs(title = "US Nonprofit Salaries by State", x= "State", y= "Salary")
 bp6 <- bp6 + theme(plot.title = element_text(size=18))
 bp6
